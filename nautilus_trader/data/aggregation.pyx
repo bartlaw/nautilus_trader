@@ -715,7 +715,6 @@ cdef class TimeBarAggregator(BarAggregator):
         bint skip_first_non_full_bar = False,
         bint build_with_no_updates = True,
         object time_bars_origin: pd.Timedelta | pd.DateOffset = None,
-        int composite_bar_build_delay = 15, # in microsecond
     ) -> None:
         super().__init__(
             instrument=instrument,
@@ -727,17 +726,12 @@ cdef class TimeBarAggregator(BarAggregator):
         self.interval = self._get_interval()
         self.interval_ns = self._get_interval_ns()
         self._timer_name = None
-        self._set_build_timer()
-        self.next_close_ns = self._clock.next_time_ns(self._timer_name)
         self._build_on_next_tick = False
-        cdef datetime now = self._clock.utc_now()
-        self._stored_open_ns = dt_to_unix_nanos(self.get_start_time(now))
         self._stored_close_ns = 0
         self._cached_update = None
         self._build_with_no_updates = build_with_no_updates
         self._timestamp_on_close = timestamp_on_close
-        self._composite_bar_build_delay = composite_bar_build_delay
-        self._add_delay = bar_type.is_composite() and bar_type.composite().is_internally_aggregated()
+        self._composite_bar_build_delay = 0
         self._batch_open_ns = 0
         self._batch_next_close_ns = 0
         self._time_bars_origin = time_bars_origin
@@ -747,10 +741,19 @@ cdef class TimeBarAggregator(BarAggregator):
             self._is_left_open = True
         elif interval_type == "right-open":
             self._is_left_open = False
+        elif interval_type == "left-open-delayed":
+            self._is_left_open = True
+            self._composite_bar_build_delay = 1000000
         else:
             raise ValueError(
                 f"Invalid interval_type: {interval_type}. Must be 'left-open' or 'right-open'.",
             )
+
+        self._set_build_timer()
+        self.next_close_ns = self._clock.next_time_ns(self._timer_name)
+
+        cdef datetime now = self._clock.utc_now()
+        self._stored_open_ns = dt_to_unix_nanos(self.get_start_time(now))
 
     def __str__(self):
         return f"{type(self).__name__}(interval_ns={self.interval_ns}, next_close_ns={self.next_close_ns})"
@@ -916,8 +919,7 @@ cdef class TimeBarAggregator(BarAggregator):
         if start_time == now:
             self._skip_first_non_full_bar = False
 
-        if self._add_delay:
-            start_time += timedelta(microseconds=self._composite_bar_build_delay)
+        start_time += timedelta(microseconds=self._composite_bar_build_delay)
 
         if self.bar_type.spec.aggregation != BarAggregation.MONTH:
             self._clock.set_timer(
