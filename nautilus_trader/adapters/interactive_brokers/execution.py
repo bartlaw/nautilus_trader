@@ -759,6 +759,12 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
                 if order.totalQuantity == UNSET_DECIMAL
                 else Quantity.from_str(str(order.totalQuantity))
             )
+
+            if total_qty <= 0.0:
+                # This can be triggered by partially filled bracket orders and SL triggered.
+                self._log.warning(f"IB order with totalQuantity <= 0, skipping: {order.__dict__}")
+                return
+
             price = (
                 None if order.lmtPrice == UNSET_DOUBLE else instrument.make_price(order.lmtPrice)
             )
