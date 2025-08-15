@@ -242,8 +242,8 @@ class BacktestDataConfig(NautilusConfig, frozen=True):
         """
         filter_expr: str | None = None
 
+        used_bar_types = []
         if self.data_cls is Bar:
-            used_bar_types = []
 
             if self.bar_types is None and self.instrument_ids is None:
                 assert self.instrument_id, "No `instrument_id` for Bar data config"
@@ -253,7 +253,7 @@ class BacktestDataConfig(NautilusConfig, frozen=True):
                 bar_type = f"{self.instrument_id}-{self.bar_spec}-EXTERNAL"
                 used_bar_types = [bar_type]
             elif self.bar_types is not None:
-                used_bar_types = self.bar_types
+                used_bar_types = [str(bar_type) for bar_type in self.bar_types]
             elif self.instrument_ids is not None and self.bar_spec is not None:
                 for instrument_id in self.instrument_ids:
                     used_bar_types.append(f"{instrument_id}-{self.bar_spec}-EXTERNAL")
@@ -278,15 +278,16 @@ class BacktestDataConfig(NautilusConfig, frozen=True):
                 for bar_type in self.bar_types
             ]
             used_instrument_ids = [bar_type.instrument_id for bar_type in bar_types]
-
         return {
             "data_cls": self.data_type,
             "instrument_ids": used_instrument_ids,
+            "bar_types": used_bar_types,
             "start": self.start_time,
             "end": self.end_time,
             "filter_expr": parse_filters_expr(filter_expr),
             "metadata": self.metadata,
         }
+
 
     @property
     def start_time_nanos(self) -> int:
